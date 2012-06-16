@@ -1,0 +1,168 @@
+#!/bin/bash
+: <<=cut
+
+=head1 NAME
+
+sshguard - Plugin to monitor sshguard blacklists
+
+=head1 APPLICABLE SYSTEMS
+
+All systems with "bash" and "sshguard"
+
+=head1 CONFIGURATION
+
+The following is the default configuration
+
+  [sshguard]
+  env.iptables /sbin/iptables
+  env.ip6tables /sbin/ip6tables
+  env.table sshguard
+
+The user running this plugin needs access to iptables
+You will need to add this:
+
+  [sshguard]
+  user root
+
+=head1 INTERPRETATION
+
+This plugin shows a graph with one line per active sshguard table, each
+showing the number of blacklisted addresses for that table.
+
+In addition, a line with the total number of blacklisted addresses is
+displayed.
+
+=head1 MAGIC MARKERS
+
+  #%# family=auto
+  #%# capabilities=autoconf
+
+=head1 VERSION
+
+  1.0.20090423
+
+=head1 BUGS
+
+Needs bash. Uses bashisms ${parm/?/pat/string} and $'...' to avoid
+running external programs.
+
+=head1 AUTHOR
+
+Andreas Heil <ah@linux-hq.de>
+
+=head1 LICENSE
+
+BSD License
+
+=cut
+
+
+##############################
+# Configurable variables
+iptables=${iptables:-/sbin/iptables}
+ip6tables=${ip6tables:-/sbin/ip6tables}
+tablename=${table:-sshguard}
+
+##############################
+# Functions
+
+# List tables, one on each line
+list_tables() {
+	if [ -e ${iptables} ]; then
+		${iptables} -S $tablename >/dev/null && echo "ipv4"
+	fi
+
+	if [ -e ${ip6tables} ]; then
+		${ip6tables} -S $tablename >/dev/null && echo "ipv6"
+	fi
+}
+
+# Print the munin values
+values() {
+ 	list_tables | while read table
+	do
+		case $table in
+			(ipv4)
+				cmd=${iptables}
+				;;
+			(ipv6)
+				cmd=${ip6tables}
+				;;
+		esac
+
+    echo -n "${table}.value "; ${cmd} -S $tablename | grep -c '^-A' 2>/dev/null
+	done
+}
+
+# Print the munin config
+config() {
+	echo 'graph_title Hosts blacklisted by sshguard'
+	echo 'graph_info This graph shows the number of host blacklisted by sshguard'
+	echo 'graph_category network'
+	echo 'graph_vlabel Number of hosts'
+	echo 'graph_args --base 1000 -l 0'
+	echo 'graph_total total'
+	
+	list_tables | while read table
+	do
+		echo "${table}.label $table"
+		echo "${table}.draw AREASTACK"
+	done
+}
+
+# Print autoconfiguration hint
+autoconf() {
+	ipv4=
+	ipv6=
+
+	if [ -e ${iptables} ]; then
+		${iptables} -S $tablename >/dev/null 2>&1 || ipv4="no sshguard table"
+	else
+		ipv4="iptables not found"
+	fi
+
+	if [ -e ${ip6tables} ]; then
+		${ip6tables} -S $tablename >/dev/null 2>&1 || ipv6="no sshguard table"
+	else
+		ipv6="ip6tables not found"
+	fi
+
+	if [ -z "$ipv4" -a -z "$ipv6" ]; then
+		echo "yes"
+		exit
+	fi
+
+	if [ -n "$ipv4" -a -n "$ipv6" ]; then
+		echo "no [ipv4:$ipv4; ipv6:$ipv6]"
+		exit
+	fi
+
+	if [ -n "$ipv4" -a -z "$ipv6" ]; then
+		echo "yes [ipv4:$ipv4; ipv6:ok]"
+		exit
+	fi
+
+	if [ -z "$ipv4" -a -n "$ipv6" ]; then
+		echo "yes [ipv4:ok; ipv6:$ipv6]"
+		exit
+	fi
+
+	# should not be reached
+	echo "no [something weird happened here]"
+}
+
+##############################
+# Main
+
+case $1 in
+	config)
+		config
+		;;
+	autoconf)
+		autoconf
+		;;
+	*)
+		values
+		;;
+esac
+exit 0
