@@ -13,4 +13,4 @@ service munin-node restart
 
 ## Known to work on:
 * Ubuntu 12.04 (Precise Pangolin)
-* Debian Wheezy on Raspberry Pi
+* Debian Wheezy on Raspberry Pi (Raspbian)
